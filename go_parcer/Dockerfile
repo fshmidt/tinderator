@@ -19,7 +19,7 @@ RUN go build -o /t main/main.go main/inst_list.go
 FROM gcr.io/distroless/base-debian10
 
 ENV GO111MODULE=on
-ENV GOOGLE_APPLICATION_CREDENTIALS='/data/credentials/creds.json'
+ENV GOOGLE_APPLICATION_CREDENTIALS='/data/credentials/your_credentials.json'
 
 WORKDIR /
 
