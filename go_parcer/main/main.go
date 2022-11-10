@@ -11,14 +11,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"postgres/postgres"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 )
-
-var palka string
 
 func findInstString(arg string) string {
 	arr := strings.Split(arg, "\n")
@@ -30,93 +27,33 @@ func findInstString(arg string) string {
 	}
 	return ""
 }
-func check(arg1 string, arg2 string, flag int) string {
+func check(arg string) string {
 	var nick string = ""
-	fmt.Println("TRIGGERED:FLAG=", flag, ", args:", arg1, arg2)
-	if flag == 0 {
-		if len(arg2) > 3 || arg2 == "__" || arg2 == "___" || arg2 == "____" {
-
-			// исправление гугловского распознавание нижнего подчеривания
-
-			switch arg2 {
-			case "__":
-				palka = "_"
-				return ""
-			case "___":
-				palka = "__"
-				return ""
-			case "____":
-				palka = "__"
-				return ""
-			default:
-				if strings.Contains(arg2, "instagram.com/") {
-					return strings.Split(arg2, "/")[len(strings.Split(arg2, "/"))-1]
-				}
-				if strings.Contains(arg2, "instagram") && (arg2[9] == '.' || arg2[9] == '_') {
-					arg2 = arg2[9:]
-				} else if strings.Contains(arg2, "instagram") {
-					arg2 = arg2[10:]
-				}
-				if strings.Contains(arg2, "..") {
+	//fmt.Println("CHECKING: arg:", arg)
+	if len(arg) > 3 {
+		if strings.Contains(arg, "instagram.com/") {
+			return strings.Split(arg, "/")[len(strings.Split(arg, "/"))-1]
+		}
+		if strings.Contains(arg, "instagram") && (arg[9] == '.' || arg[9] == '_' || arg[9] == ':') {
+			arg = arg[9:]
+		} else if strings.Contains(arg, "instagram") {
+			fmt.Println("***extra case: ")
+			arg = arg[10:]
+		}
+		for r, s := range arg {
+			if unicode.Is(unicode.Latin, s) == false && unicode.IsDigit(s) == false && s != '.' && s != '_' && s != '@' {
+				if r == 0 && s == '-' {
+					continue
+				} else {
 					return ""
 				}
-				for r, s := range arg2 {
-					if unicode.Is(unicode.Latin, s) == false && unicode.IsDigit(s) == false && s != '.' && s != '_' && s != '@' {
-						if r == 0 && s == '-' {
-							continue
-						} else {
-							return ""
-						}
-					} else if s != '@' {
-						nick = (nick + string(s))
-						if shit(nick) {
-							return ""
-						}
-					}
+			} else if s != '@' {
+				nick = (nick + string(s))
+				if shit(nick) {
+					return ""
 				}
 			}
 		}
-	} else {
-		if arg1 == "__" || arg1 == "___" || arg1 == "____" || arg2 == "__" || arg2 == "___" || arg2 == "____" {
-
-			// исправление гугловского распознавание нижнего подчеривания
-
-			switch arg2 {
-			case "__":
-				palka = "_"
-				return ""
-			case "___":
-				palka = "__"
-				return ""
-			case "____":
-				palka = "__"
-				return ""
-			}
-			switch arg1 {
-			case "__":
-				palka = "_"
-				return ""
-			case "___":
-				palka = "__"
-				return ""
-			case "____":
-				palka = "__"
-				return ""
-			}
-		} else {
-			if len(check("", arg2, 0)) > len(check("", arg1, 0)) {
-				//fmt.Println("LEN FROM CHECK POST, 0:", len(check("", arg2, 0)))
-				//fmt.Println("LEN FROM CHECK PREV, 0:", len(check("", arg1, 0)))
-				return check("", arg2, 0)
-			} else {
-				//fmt.Println("LEN FROM CHECK POST, 0:", len(check("", arg2, 0)))
-				//fmt.Println("LEN FROM CHECK PREV, 3:", len(check("", arg1, 0)))
-				return check("", arg1, 0)
-			}
-		}
-	}
-	if nick != "" {
-		return palka + nick
 	}
 	return nick
 }
@@ -131,6 +68,13 @@ func triggers(arr string) bool {
 	return false
 }
 
+func dogHunter(arr string) bool {
+	if arr[0] == '@' && len(arr) > 4 {
+		//fmt.Println("WOOF WOOWF>>>>>>>>>>>>>>>>>")
+		return true
+	}
+	return false
+}
 func shit(arr string) bool {
 
 	for _, word := range Shit {
@@ -152,6 +96,7 @@ func checkMine(nick *string, w io.Writer, file string, trig int) {
 
 func detectText(nick *string, w io.Writer, file string, iter int) error {
 	ctx := context.Background()
+
 	client, err := vision.NewImageAnnotatorClient(ctx)
 	if err != nil {
 		fmt.Println(err)
@@ -181,9 +126,18 @@ func detectText(nick *string, w io.Writer, file string, iter int) error {
 		for i := iter; i < len(annotations); i++ {
 			var arr string
 			arr = annotations[i].Description
+			//fmt.Println("---------------------\n", arr, "\n====================")
+			if dogHunter(arr) == true {
+				*nick = check(arr)
+				if *nick != "" {
+					checkMine(nick, w, file, i)
+					found = true
+					break
+				}
+			}
 			if triggers(arr) == true {
+				//fmt.Println("^^^^^^^^^^^^^^^^^^^^^\nTRIGGERED:", arr)
 				triggered, x := i, i
-
 				// собираем ник из говна палок и смайликов которые обычно пишут девочки
 				if i+1 < len(annotations) && (annotations[i+1].Description == ":" || annotations[i+1].Description == "-" || annotations[i+1].Description == "@") {
 					x += 1
@@ -191,24 +145,13 @@ func detectText(nick *string, w io.Writer, file string, iter int) error {
 						x += 1
 					}
 				}
-
-				for n := 1; x+n < len(annotations) && i-n >= 0; n++ {
-					*nick = check((annotations[i-n].Description), (annotations[x+n].Description), 1)
+				for n := 1; x+n < len(annotations); n++ {
+					*nick = check(annotations[x+n].Description)
 					if *nick != "" {
 						checkMine(nick, w, file, triggered)
 						break
 					}
 				}
-				if i == len(annotations)-1 {
-					for n := 1; i-n >= 0; n++ {
-						*nick = check("", (annotations[i-n].Description), 0)
-						if *nick != "" {
-							checkMine(nick, w, file, triggered)
-							break
-						}
-					}
-				}
-
 				if *nick != "" && *nick != "_" && len(annotations) > i+2 && (annotations[i+2].Description) == "___" && (annotations[i+2].Description) == "____" {
 					*nick = *nick + "__"
 				}
@@ -225,46 +168,7 @@ func detectText(nick *string, w io.Writer, file string, iter int) error {
 		if found == false {
 			*nick = findInstString(annotations[0].Description)
 		}
-		//}
-		if *nick == "" || found == false {
-			for i, annotation := range annotations[1:] {
-				i += 1
-				var arr string
-				arr = (annotation.Description)
-				for _, y := range Instagram {
-					if strings.Contains(arr, y) {
-						instShit := arr
-						*nick = check("", strings.Split(instShit, string(instShit[len(y)-1]))[1], 0)
-						if *nick != "" {
-							found = true
-							break
-						}
-					}
-				}
-				if arr == "себе" && (annotations[i-1].Description) == "О" && found == false {
-					for n := 1; i+n < len(annotations) && i-n-1 >= 0; n++ {
-						*nick = check((annotations[i-n-1].Description), (annotations[i+n].Description), 1)
-						if *nick != "" {
-							found = true
-							break
-						}
-					}
-					if found == false {
-						for n := len(annotations) - i - 1; i+n > i; n-- {
-							*nick = check("", (annotations[i+n].Description), 0)
-							if *nick != "" {
-								found = true
-								break
-							}
-						}
-					}
-					break
-				}
-			}
-
-		}
 	}
-	palka = ""
 	return nil
 }
 
@@ -327,7 +231,7 @@ func main() {
 
 	// парсим список скринов
 
-	screenshots, err := parseFolder("/data/assets/current_batch")
+	screenshots, err := parseFolder("../assets/current_batch")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -337,7 +241,7 @@ func main() {
 
 	// создаем файл для списка ников
 
-	f, err := os.Create("/data/assets/current_list.txt")
+	f, err := os.Create("../assets/current_list.txt")
 	if err != nil {
 		panic(err)
 	}
@@ -345,24 +249,24 @@ func main() {
 
 	// открываем файл с глобальным листом ников для сверки повторов
 
-	dataFromFile, _ := ioutil.ReadFile("/data/assets/global_list.txt")
+	dataFromFile, _ := ioutil.ReadFile("../assets/global_list.txt")
 	globalList := string(dataFromFile)
 
-	f2, err := os.OpenFile("/data/assets/global_list.txt", os.O_WRONLY|os.O_APPEND, os.ModePerm)
+	f2, err := os.OpenFile("../assets/global_list.txt", os.O_WRONLY|os.O_APPEND, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 	defer f2.Close()
 
-	// Открываем и прописываем закрытие базы данных
+	// Открываем и прописываем закрытие Postgres базы данных
 
 	//db := postgres.OpenDB()
 	//defer postgres.CloseDB(db)
-	db, err := initStore()
-	if err != nil {
-		log.Fatalf("failed to initialise the store: %s", err)
-	}
-	defer db.Close()
+	//db, err := initStore()
+	//if err != nil {
+	//	log.Fatalf("failed to initialise the store: %s", err)
+	//}
+	//defer db.Close()
 
 	// синхронизация горутин
 
@@ -402,12 +306,11 @@ func main() {
 						panic(err)
 					}
 
-					//mu.Lock()
 					_, err = f2.WriteString(nick)
 					if err != nil {
 						panic(err)
 					}
-					postgres.ChlistToDB(nick, time.Now().Format("2006-01-02"), db)
+					//postgres.ChlistToDB(nick, time.Now().Format("2006-01-02"), db)
 					new++
 				} else {
 					fmt.Println(y, ": she's already done .... ", nick)
