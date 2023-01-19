@@ -18,5 +18,5 @@ The python part receives a list of nicknames from the first stage and, imitating
 # Run
 
 ```
-make run main/main.go main/inst_list.go
+go run main/main.go main/inst_list.go
 ```
